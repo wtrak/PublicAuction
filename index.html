@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Auction Prototype</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      background: #f9f9f9;
+      color: #333;
+      padding: 20px;
+    }
+
+    h1 {
+      text-align: center;
+    }
+
+    .phase {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .timer {
+      font-weight: bold;
+      color: #d32f2f;
+    }
+
+    #listing-form {
+      display: flex;
+      flex-direction: column;
+      max-width: 400px;
+      margin: 0 auto 30px;
+      gap: 10px;
+    }
+
+    #listing-form input, #listing-form textarea, #listing-form button {
+      padding: 8px;
+      font-size: 16px;
+    }
+
+    .item-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      justify-content: center;
+    }
+
+    .item {
+      border: 1px solid #ccc;
+      background: #fff;
+      padding: 10px;
+      width: 250px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+
+    .item img {
+      width: 100%;
+      height: 150px;
+      object-fit: cover;
+      margin-bottom: 10px;
+    }
+
+    .bid-button {
+      background: #4caf50;
+      color: white;
+      border: none;
+      padding: 8px;
+      width: 100%;
+      cursor: pointer;
+      font-size: 16px;
+    }
+
+    .bid-button:hover {
+      background: #388e3c;
+    }
+
+    .current-bid {
+      font-weight: bold;
+      margin-top: 5px;
+    }
+
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Public Auction Prototype</h1>
+<div class="phase">
+  <h2 id="phase-title">Listing Phase</h2>
+  <p>Time left: <span class="timer" id="timer"></span></p>
+</div>
+
+<form id="listing-form">
+  <input type="text" id="title" placeholder="Item Title" required />
+  <textarea id="description" placeholder="Description" required></textarea>
+  <input type="number" id="startingBid" placeholder="Starting Bid ($)" required />
+  <input type="file" id="image" accept="image/*" required />
+  <button type="submit">Add Item</button>
+</form>
+
+<div class="item-list" id="item-list"></div>
+
+<script>
+  const phases = ["Listing", "Viewing", "Auction"];
+  const phaseTimes = {
+    Listing: 600, // 10 minutes
+    Viewing: 180, // 3 minutes
+    Auction: 0    // per-item auction
+  };
+
+  let items = [];
+  let currentPhase = 0;
+  let timeLeft = phaseTimes[phases[currentPhase]];
+  let timerInterval = null;
+  let currentAuctionIndex = 0;
+
+  const phaseTitle = document.getElementById("phase-title");
+  const timerDisplay = document.getElementById("timer");
+  const listingForm = document.getElementById("listing-form");
+  const itemList = document.getElementById("item-list");
+
+  listingForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const title = document.getElementById("title").value;
+    const description = document.getElementById("description").value;
+    const startingBid = parseFloat(document.getElementById("startingBid").value);
+    const imageFile = document.getElementById("image").files[0];
+
+    const reader = new FileReader();
+    reader.onload = function() {
+      items.push({
+        title,
+        description,
+        bid: startingBid,
+        image: reader.result
+      });
+      renderItems();
+      listingForm.reset();
+    };
+    reader.readAsDataURL(imageFile);
+  });
+
+  function renderItems(isAuction = false) {
+    itemList.innerHTML = "";
+
+    if (isAuction && currentAuctionIndex < items.length) {
+      const item = items[currentAuctionIndex];
+      const div = document.createElement("div");
+      div.className = "item";
+
+      div.innerHTML = `
+        <img src="${item.image}" />
+        <h3>${item.title}</h3>
+        <p>${item.description}</p>
+        <p class="current-bid">Current Bid: $<span id="bid-amount">${item.bid.toFixed(2)}</span></p>
+        <button class="bid-button" id="bid-btn">Place Bid (+$1)</button>
+      `;
+      itemList.appendChild(div);
+
+      document.getElementById("bid-btn").onclick = () => {
+        item.bid += 1;
+        document.getElementById("bid-amount").textContent = item.bid.toFixed(2);
+      };
+    } else {
+      items.forEach((item) => {
+        const div = document.createElement("div");
+        div.className = "item";
+        div.innerHTML = `
+          <img src="${item.image}" />
+          <h3>${item.title}</h3>
+          <p>${item.description}</p>
+          <p class="current-bid">Starting Bid: $${item.bid.toFixed(2)}</p>
+        `;
+        itemList.appendChild(div);
+      });
+    }
+  }
+
+  function updateTimer() {
+    timerDisplay.textContent = `${Math.floor(timeLeft / 60)}:${(timeLeft % 60).toString().padStart(2, '0')}`;
+    timeLeft--;
+
+    if (timeLeft < 0) {
+      clearInterval(timerInterval);
+      nextPhase();
+    }
+  }
+
+  function startPhase() {
+    const phase = phases[currentPhase];
+    phaseTitle.textContent = `${phase} Phase`;
+
+    if (phase === "Listing") {
+      listingForm.classList.remove("hidden");
+      renderItems();
+    } else if (phase === "Viewing") {
+      listingForm.classList.add("hidden");
+      renderItems();
+    } else if (phase === "Auction") {
+      listingForm.classList.add("hidden");
+      runAuction();
+      return; // Timer handled per item
+    }
+
+    timeLeft = phaseTimes[phase];
+    updateTimer();
+    timerInterval = setInterval(updateTimer, 1000);
+  }
+
+  function nextPhase() {
+    currentPhase++;
+    if (currentPhase >= phases.length) return;
+    startPhase();
+  }
+
+  function runAuction() {
+    if (currentAuctionIndex >= items.length) {
+      phaseTitle.textContent = "Auction Complete";
+      itemList.innerHTML = "<p style='text-align:center;'>All auctions have finished.</p>";
+      return;
+    }
+
+    const auctionTime = 120; // 2 minutes
+    timeLeft = auctionTime;
+
+    renderItems(true);
+    updateTimer();
+    timerInterval = setInterval(() => {
+      timerDisplay.textContent = `${Math.floor(timeLeft / 60)}:${(timeLeft % 60).toString().padStart(2, '0')}`;
+      timeLeft--;
+
+      if (timeLeft < 0) {
+        clearInterval(timerInterval);
+        currentAuctionIndex++;
+        runAuction();
+      }
+    }, 1000);
+  }
+
+  // Start the first phase
+  startPhase();
+</script>
+
+</body>
+</html>
